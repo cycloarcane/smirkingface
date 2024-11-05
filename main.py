@@ -16,19 +16,21 @@ import socket
 from contextlib import closing
 from urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
+import xml.etree.ElementTree as ET
+from typing import Dict
+import io
 
 class ServiceScanner:
     """Class to handle service detection and basic connection testing"""
     
     COMMON_SERVICES = {
         'ftp': [20, 21],
-        'sftp': [22],
         'ssh': [22],
         'telnet': [23],
         'smtp': [25, 465, 587],
         'imap': [143, 993],
         'pop3': [110, 995],
-        'http': [80],
+        'http': [80, 6666],  # Added 6666 as it's in your output
         'https': [443],
         'rdp': [3389],
         'ldap': [389, 636],
@@ -41,45 +43,57 @@ class ServiceScanner:
         self.detected_services = {}
 
     def parse_nmap_output(self, nmap_data: Dict) -> Dict:
-        """Parse nmap output to identify running services"""
+        """Parse nmap XML output to identify running services"""
         services = {}
         raw_output = nmap_data.get('raw_output', '')
         
-        for service_name, ports in self.COMMON_SERVICES.items():
-            for port in ports:
-                if f"{port}/tcp" in raw_output and "open" in raw_output:
-                    version_info = self._extract_version(raw_output, port)
-                    services[service_name] = {
-                        'port': port,
-                        'status': 'open',
-                        'version': version_info
-                    }
+        try:
+            # Parse XML from the raw output
+            tree = ET.parse(io.StringIO(raw_output))
+            root = tree.getroot()
+            
+            # Find all port elements
+            for host in root.findall('.//host'):
+                for port in host.findall('.//port'):
+                    state = port.find('state')
+                    if state is not None and state.get('state') == 'open':
+                        port_id = int(port.get('portid'))
+                        service_elem = port.find('service')
+                        
+                        if service_elem is not None:
+                            service_name = service_elem.get('name')
+                            product = service_elem.get('product', '')
+                            version = service_elem.get('version', '')
+                            extra_info = service_elem.get('extrainfo', '')
+                            
+                            # Build version string
+                            version_str = ' '.join(filter(None, [product, version, extra_info]))
+                            
+                            # Find the canonical service name from our COMMON_SERVICES
+                            canonical_service = None
+                            for common_name, ports in self.COMMON_SERVICES.items():
+                                if port_id in ports or service_name in common_name:
+                                    canonical_service = common_name
+                                    break
+                            
+                            if canonical_service:
+                                services[canonical_service] = {
+                                    'port': port_id,
+                                    'status': 'open',
+                                    'version': {
+                                        'name': service_name,
+                                        'version': version_str if version_str else 'Unknown',
+                                        'raw': f"Port {port_id}: {service_name} {version_str}"
+                                    }
+                                }
         
+        except ET.ParseError as e:
+            print(f"Error parsing XML: {e}")
+            return {}
+            
         return services
 
-    def _extract_version(self, raw_output: str, port: int) -> Dict:
-        """Extract detailed version information from nmap output for a specific port"""
-        port_lines = re.findall(f"{port}/tcp.*?\n(?:^\\|.*\n)*", raw_output, re.MULTILINE)
-        if port_lines:
-            version_info = {
-                'name': 'Unknown',
-                'version': 'Unknown',
-                'raw': port_lines[0].strip()
-            }
-            
-            # Try to extract service name and version
-            match = re.search(r'(\d+)/tcp\s+open\s+(\S+)(?:\s+(\S+))?', port_lines[0])
-            if match:
-                version_info['name'] = match.group(2)
-                if match.group(3):
-                    version_info['version'] = match.group(3)
-            
-            return version_info
-        return {
-            'name': 'Unknown',
-            'version': 'Unknown',
-            'raw': 'No detailed information available'
-        }
+    # Rest of the class methods remain the same...}
 
     def test_services(self, detected_services: Dict) -> Dict:
         """Test all detected services"""
