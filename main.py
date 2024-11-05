@@ -25,12 +25,13 @@ class ServiceScanner:
     
     COMMON_SERVICES = {
         'ftp': [20, 21],
+        'sftp': [22],
         'ssh': [22],
         'telnet': [23],
         'smtp': [25, 465, 587],
         'imap': [143, 993],
         'pop3': [110, 995],
-        'http': [80, 6666],  # Added 6666 as it's in your output
+        'http': [80, 6666],
         'https': [443],
         'rdp': [3389],
         'ldap': [389, 636],
@@ -93,26 +94,45 @@ class ServiceScanner:
             
         return services
 
-    # Rest of the class methods remain the same...}
-
     def test_services(self, detected_services: Dict) -> Dict:
         """Test all detected services"""
         results = {}
         for service, info in detected_services.items():
             port = info['port']
-            test_method = getattr(self, f'test_{service}', None)
+            
+            # Map service names to test methods
+            test_method_map = {
+                'ftp': self.test_ftp,
+                'ssh': self.test_ssh,
+                'http': self.test_http,
+                'https': self.test_https,
+                'smtp': self.test_smtp,
+                'telnet': self.test_telnet
+            }
+            
+            test_method = test_method_map.get(service)
             if test_method:
                 results[service] = test_method(port)
         return results
 
-    def test_ftp_anonymous(self, port: int) -> Dict:
-        """Test FTP anonymous login"""
+    def test_ftp(self, port: int) -> Dict:
+        """Test FTP connection and anonymous login"""
         try:
             ftp = ftplib.FTP()
             ftp.connect(self.target, port, timeout=self.timeout)
-            result = ftp.login('anonymous', 'anonymous@example.com')
-            ftp.quit()
-            return {'success': True, 'message': result}
+            
+            # Try anonymous login
+            try:
+                result = ftp.login('anonymous', 'anonymous@example.com')
+                ftp.quit()
+                return {'success': True, 'message': 'Anonymous login successful: ' + result}
+            except ftplib.error_perm as e:
+                # Try to extract the specific error message
+                error_msg = str(e)
+                if '530' in error_msg:  # 530 is the code for login failed
+                    return {'success': False, 'message': 'Anonymous login failed: ' + error_msg}
+                return {'success': False, 'message': error_msg}
+            
         except Exception as e:
             return {'success': False, 'message': str(e)}
 
