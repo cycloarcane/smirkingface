@@ -17,6 +17,7 @@ class Host:
         self.access_level: str = "none"  # none, user, admin, system
         self.services: Dict[str, Dict] = {}
         self.last_seen: str = datetime.now().isoformat()
+        self.credentials: Dict[str, Dict] = {}  # Store credentials for services
     
     def to_dict(self) -> Dict:
         """Convert Host to dictionary for serialization"""
@@ -28,7 +29,8 @@ class Host:
             "vulnerabilities": self.vulnerabilities,
             "access_level": self.access_level,
             "services": self.services,
-            "last_seen": self.last_seen
+            "last_seen": self.last_seen,
+            "credentials": self.credentials
         }
     
     @classmethod
@@ -41,6 +43,7 @@ class Host:
         host.access_level = data.get("access_level", "none")
         host.services = data.get("services", {})
         host.last_seen = data.get("last_seen", datetime.now().isoformat())
+        host.credentials = data.get("credentials", {})
         return host
     
     def add_service(self, name: str, port: int, version: str = "", details: Dict = None) -> None:
@@ -104,6 +107,11 @@ class Network:
     def get_all_hosts(self) -> List[Host]:
         """Get all hosts in the network"""
         return list(self.hosts.values())
+    
+    def clear_all_hosts(self) -> None:
+        """Clear all hosts from the network"""
+        self.hosts.clear()
+        print("Cleared all hosts from the network")
     
     def add_scan_result(self, scan_result: Dict) -> None:
         """Add a scan result to the history"""
