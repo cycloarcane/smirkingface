@@ -112,6 +112,7 @@ python smirkingface.py -t 192.168.1.1 -a -m /path/to/local/model.bin
 -p, --api-type      LLM API type (local/openai/http)
 -b, --api-base      Base URL for HTTP API (e.g., http://localhost:5000/v1)
 --scenario          Scenario description for AI mode
+--timeout           Timeout in seconds for LLM requests (default: 300)
 ```
 
 ### Interactive Mode Commands
@@ -137,6 +138,9 @@ For local binary models like llama.cpp:
 ```bash
 # Example with a local llama.cpp model
 python smirkingface.py -i -p local -m /path/to/llama.cpp
+
+# Example with increased timeout for slow models (10 minutes)
+python smirkingface.py -i -p local -m /path/to/llama.cpp --timeout 600
 ```
 
 ### HTTP API (Local Server)
@@ -146,11 +150,15 @@ For local models running behind HTTP APIs (like LM Studio, llama.cpp server, etc
 ```bash
 # Example with a model running at http://localhost:5000/v1
 python smirkingface.py -i -p http -b http://localhost:5000/v1
+
+# Example with increased timeout for large local reasoning models
+python smirkingface.py -i -p http -b http://localhost:5000/v1 --timeout 600
 ```
 
 You can also set this up through the interactive mode by selecting option 7 (AI mode) and then:
 - API type: `http`
 - API base URL: `http://localhost:5000/v1`
+- Timeout: You'll be prompted to set a timeout (in seconds)
 
 This option is perfect for models running in LM Studio, llama.cpp server, or any OpenAI-compatible API.
 
@@ -175,6 +183,17 @@ SmirkingFace automatically handles `<think>` tags from local models. Instead of 
 3. Removes the tags from the response shown to the user
 
 This approach preserves the quality benefits of local models while maintaining clean output.
+
+### LLM Timeout Configuration
+
+SmirkingFace provides flexible timeout settings for LLM requests, which is particularly useful for local reasoning models that may take longer to generate responses:
+
+- Default timeout: 300 seconds (5 minutes)
+- Command line: Use `--timeout` to set a custom timeout in seconds
+- Interactive mode: When selecting AI mode (option 7), you can update the timeout
+- For large local models: Consider using timeouts of 600-900 seconds (10-15 minutes)
+
+The timeout applies to all LLM communication methods (local binary, HTTP API, and OpenAI).
 
 ## 📋 Framework Components
 

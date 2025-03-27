@@ -21,7 +21,8 @@ class SmirkingFace:
                  api_base: str = None,
                  data_dir: str = "data",
                  output_dir: str = "output",
-                 interactive: bool = True):
+                 interactive: bool = True,
+                 timeout: int = 300):
         
         # Create necessary directories
         os.makedirs(data_dir, exist_ok=True)
@@ -31,17 +32,19 @@ class SmirkingFace:
         self.environment_state = EnvironmentStateService(data_dir)
         self.attack_graph = AttackGraphService(self.environment_state)
         self.action_planner = ActionPlanner(self.environment_state, self.attack_graph)
-        self.llm = LLMIntegration(model_path, api_type, api_base)
+        self.llm = LLMIntegration(model_path, api_type, api_base, timeout=timeout)
         
         # Configuration
         self.data_dir = data_dir
         self.output_dir = output_dir
         self.interactive = interactive
         self.current_scenario = "Initial reconnaissance"
+        self.timeout = timeout
         
         print("🧠 SmirkingFace initialized")
         print(f"📊 Data directory: {data_dir}")
         print(f"📤 Output directory: {output_dir}")
+        print(f"⏱️ LLM timeout: {timeout} seconds")
         
         # Load any existing state
         host_count = len(self.environment_state.network.get_all_hosts())
@@ -159,7 +162,38 @@ class SmirkingFace:
         llm_result = self.llm.query_for_action(scenario, env_state)
         
         if not llm_result["success"]:
-            print(f"❌ LLM query failed: {llm_result.get('error', 'Unknown error')}")
+            error_msg = llm_result.get("error", "Unknown error")
+            
+            # Check for timeout error and display a more helpful message
+            if "timed out" in error_msg.lower():
+                print(f"⏱️ LLM request timed out after {self.timeout} seconds.")
+                print(f"   Try increasing the timeout with the --timeout option or in interactive mode.")
+                print(f"   Current timeout: {self.timeout} seconds")
+            # Check for the case where we only got thinking content
+            elif "thinking content but no action or query blocks" in error_msg:
+                print(f"⚠️ The LLM generated thinking content but no action or query code blocks.")
+                print(f"   This can happen with some models, especially with smaller context windows.")
+                print(f"   Try the following solutions:")
+                print(f"   1. Use a different model with better instruction following")
+                print(f"   2. Try a simpler scenario description")
+                print(f"   3. If using an HTTP API, check if the API is properly configured")
+                
+                # Show the thinking content to help the user understand what the model was trying to do
+                thinking = llm_result.get("thinking", [])
+                if thinking:
+                    print(f"\n💭 The model was thinking:")
+                    for i, thought in enumerate(thinking[:3], 1):  # Show first 3 thoughts only
+                        short_thought = thought[:150] + "..." if len(thought) > 150 else thought
+                        print(f"  {i}. {short_thought}")
+                    if len(thinking) > 3:
+                        print(f"     ... ({len(thinking) - 3} more thinking blocks)")
+            else:
+                print(f"❌ LLM query failed: {error_msg}")
+                
+                # Display any available debug info
+                if "debug_info" in llm_result:
+                    print(f"   Debug info: {llm_result['debug_info']}")
+                
             return llm_result
         
         # Get thinking process if available
@@ -172,9 +206,25 @@ class SmirkingFace:
         # Handle query or action
         response_type = llm_result.get("response_type")
         
+        # Log if function signatures were fixed
+        if llm_result.get("fixed_signature", False):
+            print("ℹ️ Fixed invalid function signature in LLM response")
+        
         if response_type == "query":
             print(f"🔍 LLM is querying environment")
             query_code = llm_result.get("query_code", "")
+            
+            # Debug: Check if the query code is valid
+            if not query_code or "def query" not in query_code:
+                print(f"❌ Invalid query code format")
+                if query_code:
+                    print(f"   Received code snippet: {query_code[:100]}...")
+                return {
+                    "success": False,
+                    "error": "Invalid query code format",
+                    "response_type": "query"
+                }
+                
             try:
                 # IMPORTANT: This is unsafe in production as it allows arbitrary code execution
                 # A safer approach would be to parse the query and use predefined API methods
@@ -185,7 +235,13 @@ class SmirkingFace:
                     "attack_graph_service": self.attack_graph
                 }
                 
-                exec(query_code, {}, local_vars)
+                # Pass the required environment variables in globals to make them accessible
+                global_vars = {
+                    "environment_state_service": self.environment_state,
+                    "attack_graph_service": self.attack_graph
+                }
+                
+                exec(query_code, global_vars, local_vars)
                 query_result = local_vars.get("query")()
                 
                 # Save the query result for future reference
@@ -208,6 +264,7 @@ class SmirkingFace:
             
             except Exception as e:
                 print(f"❌ Error executing query: {e}")
+                print(f"   Query code: {query_code}")
                 return {
                     "success": False,
                     "error": f"Query execution error: {str(e)}",
@@ -217,6 +274,30 @@ class SmirkingFace:
         elif response_type == "action":
             print(f"🚀 LLM is executing action")
             action_code = llm_result.get("action_code", "")
+            
+            # Debug: Check if the action code is valid
+            if not action_code or "def action" not in action_code:
+                print(f"❌ Invalid action code format")
+                if action_code:
+                    print(f"   Received code snippet: {action_code[:100]}...")
+                return {
+                    "success": False,
+                    "error": "Invalid action code format",
+                    "response_type": "action"
+                }
+                
+            # Check for unsupported action types
+            if any(unsupported in action_code for unsupported in ["VulnerabilityScanAction", "ExploitAction", "PrivilegeEscalationAction"]):
+                print(f"❌ LLM tried to use an unsupported action type")
+                print(f"   Only ScanNetworkAction and TestCredentialsAction are currently supported")
+                print(f"   Action code: {action_code}")
+                return {
+                    "success": False,
+                    "error": "Unsupported action type requested",
+                    "response_type": "action",
+                    "suggestion": "Try a different scenario description that leads to network scanning or credential testing actions"
+                }
+                
             try:
                 # IMPORTANT: This is unsafe in production as it allows arbitrary code execution
                 # A safer approach would be to parse the action and use predefined API methods
@@ -229,8 +310,25 @@ class SmirkingFace:
                     "attack_graph_service": self.attack_graph
                 }
                 
-                exec(action_code, {}, local_vars)
+                # Pass the required names in globals to make them available in the function execution scope
+                global_vars = {
+                    "ScanNetworkAction": ScanNetworkAction,
+                    "TestCredentialsAction": TestCredentialsAction
+                }
+                
+                exec(action_code, global_vars, local_vars)
                 action_result = local_vars.get("action")()
+                
+                # Validate that all actions are of supported types
+                for action in action_result:
+                    if not isinstance(action, (ScanNetworkAction, TestCredentialsAction)):
+                        print(f"❌ LLM returned an unsupported action type: {type(action).__name__}")
+                        print(f"   Only ScanNetworkAction and TestCredentialsAction are currently supported")
+                        return {
+                            "success": False,
+                            "error": f"Unsupported action type: {type(action).__name__}",
+                            "response_type": "action"
+                        }
                 
                 # Execute the action(s)
                 execution_results = []
@@ -246,6 +344,7 @@ class SmirkingFace:
             
             except Exception as e:
                 print(f"❌ Error executing action: {e}")
+                print(f"   Action code: {action_code}")
                 return {
                     "success": False,
                     "error": f"Action execution error: {str(e)}",
@@ -333,7 +432,24 @@ class SmirkingFace:
                     api_base = None
                     if api_type == "http":
                         api_base = input("Enter API base URL [http://localhost:5000/v1]: ").strip() or "http://localhost:5000/v1"
-                    self.llm = LLMIntegration(model_path, api_type, api_base)
+                    
+                    # Ask for timeout configuration
+                    timeout_input = input(f"Enter timeout in seconds [current: {self.timeout}]: ").strip()
+                    if timeout_input and timeout_input.isdigit():
+                        self.timeout = int(timeout_input)
+                        print(f"⏱️ Timeout set to {self.timeout} seconds")
+                    
+                    self.llm = LLMIntegration(model_path, api_type, api_base, timeout=self.timeout)
+                else:
+                    # Option to update just the timeout
+                    update_timeout = input("Update LLM timeout? (y/n) [n]: ").strip().lower() == "y"
+                    if update_timeout:
+                        timeout_input = input(f"Enter timeout in seconds [current: {self.timeout}]: ").strip()
+                        if timeout_input and timeout_input.isdigit():
+                            self.timeout = int(timeout_input)
+                            # Recreate LLM integration with new timeout
+                            self.llm = LLMIntegration(self.llm.model_path, self.llm.api_type, self.llm.api_base, timeout=self.timeout)
+                            print(f"⏱️ Timeout set to {self.timeout} seconds")
                 
                 scenario = input("Enter scenario description: ").strip() or "Perform security assessment"
                 self.process_llm_action(scenario)
@@ -406,6 +522,7 @@ def main():
     parser.add_argument("-p", "--api-type", default="local", choices=["local", "openai", "http"], help="API type for LLM")
     parser.add_argument("-b", "--api-base", help="Base URL for HTTP API (e.g., http://localhost:5000/v1)")
     parser.add_argument("--scenario", help="Scenario description for AI mode")
+    parser.add_argument("--timeout", type=int, default=300, help="Timeout in seconds for LLM requests (default: 300)")
     
     args = parser.parse_args()
     
@@ -416,7 +533,8 @@ def main():
         api_base=args.api_base,
         data_dir=args.data_dir,
         output_dir=args.output_dir,
-        interactive=args.interactive
+        interactive=args.interactive,
+        timeout=args.timeout
     )
     
     # Run in appropriate mode
