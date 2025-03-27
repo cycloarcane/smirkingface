@@ -1,6 +1,7 @@
 
 # 😏😏 SmirkingFace 😏😏
 
+
 Welcome to **SmirkingFace**, an LLM-powered penetration testing tool designed to uncover security vulnerabilities and enhance the security posture and compliance of individuals and organizations.
 
 ### 🚨 Disclaimer
