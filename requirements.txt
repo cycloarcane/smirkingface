@@ -2,7 +2,7 @@
 networkx>=2.6.3
 requests>=2.28.0
 paramiko>=2.11.0
-ftplib3>=0.2.1
+pyftpdlib
 ldap3>=2.9.1
 
 # For visualization (optional)
