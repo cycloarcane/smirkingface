@@ -1,6 +1,6 @@
-# 😏😏 SmirkingFace 😏😏
+# 😏 SmirkingFace 😏
 
-Welcome to **SmirkingFace**, an LLM-powered penetration testing tool designed to uncover security vulnerabilities and enhance the security posture and compliance of individuals and organizations.
+Welcome to **SmirkingFace**, an LLM-powered penetration testing framework that combines network scanning, attack path analysis, and critical host identification to enhance security posture assessment.
 
 ## 🚨 Disclaimer
 
@@ -8,18 +8,21 @@ This tool is **intended for responsible and lawful use only**. Users are solely 
 
 ## 📜 Project Summary
 
-**SmirkingFace** leverages advanced Language Models (LLMs) to perform comprehensive penetration testing in a multi-step process:
+**SmirkingFace** is a comprehensive penetration testing framework that leverages advanced Language Models (LLMs) to:
 
-1. **Initial Scanning**: Runs initial scans on a target to gather information and build a detailed security profile.
-2. **Credential Testing**: Attempts login using common or known credentials based on scan results.
-3. **Exploit Execution**: Downloads, modifies, and executes proof-of-concept exploit code tailored to the target system.
+1. **Scan Networks**: Perform detailed network scans to discover hosts, services, and vulnerabilities
+2. **Analyze Attack Paths**: Identify potential attack vectors between hosts in a network
+3. **Identify Critical Hosts**: Determine which hosts are most strategically important in a network
+4. **Simulate Environments**: Generate realistic network environments for testing and demonstration
+5. **AI-Guided Testing**: Use LLMs to suggest and execute penetration testing actions
 
-The project implements a structured approach inspired by the Incalmo framework to improve LLM effectiveness in cybersecurity tasks:
+The framework implements a structured approach with these key components:
 
-- **Environment State Service**: Maintains state of discovered hosts, services, and vulnerabilities
-- **Attack Graph Service**: Models potential attack paths between hosts
-- **Action Planner**: Translates high-level tasks into specific commands
-- **LLM Integration**: Handles communication with local LLM models, stripping `<think>` tags
+- **Environment State Service**: Maintains state of discovered hosts, services, vulnerabilities, and credentials
+- **Attack Graph Service**: Models potential attack paths between hosts using graph theory
+- **Action Planner**: Translates high-level tasks into specific commands and executes them
+- **LLM Integration**: Handles communication with local or API-based LLM models
+- **Simulation Environment**: Generates realistic network environments for testing
 
 ## 🌐 Repository and Contact
 
@@ -77,9 +80,9 @@ The project implements a structured approach inspired by the Incalmo framework t
    mkdir -p data output
    ```
 
-5. Make the main script executable:
+5. Make the scripts executable:
    ```bash
-   chmod +x smirkingface.py
+   chmod +x smirkingface.py simulation.py
    ```
 
 ## 🚀 Usage
@@ -97,6 +100,24 @@ python smirkingface.py -t 192.168.1.1 -s full
 
 # Use AI-guided mode with a specific model
 python smirkingface.py -t 192.168.1.1 -a -m /path/to/local/model.bin
+```
+
+### Simulation Environment
+
+SmirkingFace includes a simulation environment for testing and demonstration:
+
+```bash
+# Run with default simple network (2 hosts)
+python simulation.py
+
+# Run with complex network (10 hosts by default)
+python simulation.py -c complex
+
+# Run with custom number of hosts
+python simulation.py -c complex -n 15
+
+# Use custom data directories
+python simulation.py -c complex -d custom_data -o custom_output
 ```
 
 ### Command Line Options
@@ -127,11 +148,40 @@ In interactive mode, you can perform the following actions:
 6. **Get Suggested Actions**: Gets suggested next actions
 7. **AI Mode**: Uses LLM to determine and execute actions
 
-## 🧠 LLM Integration
+## 🧠 Key Features
+
+### Attack Path Analysis
+
+SmirkingFace can analyze potential attack paths between hosts in a network:
+
+- Identifies possible attack vectors based on vulnerabilities and network topology
+- Calculates probability of success and impact for each attack path
+- Ranks attack paths by effectiveness and efficiency
+- Visualizes attack paths for better understanding
+
+### Critical Host Identification
+
+The framework can identify critical hosts in a network:
+
+- Analyzes network topology to find central nodes
+- Evaluates host importance based on services and vulnerabilities
+- Ranks hosts by strategic importance
+- Helps focus penetration testing efforts on high-value targets
+
+### Simulation Environment
+
+The simulation environment creates realistic network scenarios:
+
+- Generates hosts with appropriate services and vulnerabilities
+- Creates network segments (DMZ, web, app, db, internal)
+- Adds simulated credentials and compromised hosts
+- Records scan history to simulate previous reconnaissance
+
+### LLM Integration
 
 SmirkingFace supports multiple ways to integrate with LLMs:
 
-### Local Models (Binary)
+#### Local Models (Binary)
 
 For local binary models like llama.cpp:
 
@@ -143,26 +193,16 @@ python smirkingface.py -i -p local -m /path/to/llama.cpp
 python smirkingface.py -i -p local -m /path/to/llama.cpp --timeout 600
 ```
 
-### HTTP API (Local Server)
+#### HTTP API (Local Server)
 
 For local models running behind HTTP APIs (like LM Studio, llama.cpp server, etc.):
 
 ```bash
 # Example with a model running at http://localhost:5000/v1
 python smirkingface.py -i -p http -b http://localhost:5000/v1
-
-# Example with increased timeout for large local reasoning models
-python smirkingface.py -i -p http -b http://localhost:5000/v1 --timeout 600
 ```
 
-You can also set this up through the interactive mode by selecting option 7 (AI mode) and then:
-- API type: `http`
-- API base URL: `http://localhost:5000/v1`
-- Timeout: You'll be prompted to set a timeout (in seconds)
-
-This option is perfect for models running in LM Studio, llama.cpp server, or any OpenAI-compatible API.
-
-### API-Based Models (OpenAI)
+#### API-Based Models (OpenAI)
 
 You can also use OpenAI's API:
 
@@ -174,52 +214,44 @@ export OPENAI_API_KEY=your_api_key_here
 python smirkingface.py -i -p openai -m gpt-3.5-turbo
 ```
 
-### Handling `<think>` Tags
-
-SmirkingFace automatically handles `<think>` tags from local models. Instead of removing these via prompting, the framework:
-
-1. Extracts content inside `<think>` tags
-2. Stores this content for analysis
-3. Removes the tags from the response shown to the user
-
-This approach preserves the quality benefits of local models while maintaining clean output.
-
 ### LLM Timeout Configuration
 
-SmirkingFace provides flexible timeout settings for LLM requests, which is particularly useful for local reasoning models that may take longer to generate responses:
+SmirkingFace provides flexible timeout settings for LLM requests:
 
 - Default timeout: 300 seconds (5 minutes)
 - Command line: Use `--timeout` to set a custom timeout in seconds
 - Interactive mode: When selecting AI mode (option 7), you can update the timeout
 - For large local models: Consider using timeouts of 600-900 seconds (10-15 minutes)
 
-The timeout applies to all LLM communication methods (local binary, HTTP API, and OpenAI).
-
 ## 📋 Framework Components
 
 ### Environment State Service
 
-- Tracks discovered hosts, their services, and vulnerabilities
+- Tracks discovered hosts, their services, vulnerabilities, and credentials
 - Persists state between runs
 - Provides an API for querying environment state
+- Manages host access levels (none, user, admin, system)
 
 ### Attack Graph Service
 
-- Builds attack graphs based on discovered vulnerabilities
-- Finds potential attack paths between hosts
+- Builds attack graphs based on discovered vulnerabilities and network topology
+- Finds potential attack paths between hosts using graph algorithms
 - Identifies critical hosts in the environment
+- Calculates probability and impact metrics for attack paths
 
 ### Action Planner
 
 - Translates high-level tasks into specific actions
 - Executes actions and updates environment state
-- Suggests potential next actions
+- Suggests potential next actions based on current state
+- Handles network scanning and credential testing
 
 ### LLM Integration
 
 - Handles communication with local and API-based models
-- Strips `<think>` tags from responses
 - Formats prompts for structured outputs
+- Manages timeouts and error handling
+- Extracts and processes model responses
 
 ## 📧 Contact
 
